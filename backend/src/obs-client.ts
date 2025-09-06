@@ -155,6 +155,307 @@ export class OBSClient {
     }
   }
 
+  // Microphone controls
+  async toggleMute(sourceName: string): Promise<boolean> {
+    if (!this.isConnected) {
+      throw new Error("Not connected to OBS");
+    }
+
+    try {
+      const response = await this.obs.call("ToggleInputMute", { inputName: sourceName });
+      console.log(`Toggled mute for ${sourceName}:`, response.inputMuted);
+      return response.inputMuted;
+    } catch (error) {
+      console.error(`Failed to toggle mute for ${sourceName}:`, error);
+      throw error;
+    }
+  }
+
+  async setMute(sourceName: string, muted: boolean): Promise<void> {
+    if (!this.isConnected) {
+      throw new Error("Not connected to OBS");
+    }
+
+    try {
+      await this.obs.call("SetInputMute", { inputName: sourceName, inputMuted: muted });
+      console.log(`Set mute for ${sourceName} to:`, muted);
+    } catch (error) {
+      console.error(`Failed to set mute for ${sourceName}:`, error);
+      throw error;
+    }
+  }
+
+  // Camera controls
+  async toggleCamera(sourceName: string): Promise<boolean> {
+    if (!this.isConnected) {
+      throw new Error("Not connected to OBS");
+    }
+
+    try {
+      // Get all scenes first
+      const scenes = await this.obs.call("GetSceneList");
+      const allScenes = scenes.scenes;
+      
+      console.log(`Searching for "${sourceName}" in ${allScenes.length} scenes...`);
+      
+      // Find the camera source in all scenes
+      const cameraItems: Array<{sceneName: string, sceneItemId: number, enabled: boolean}> = [];
+      
+      for (const scene of allScenes) {
+        try {
+          const sceneItems = await this.obs.call("GetSceneItemList", { sceneName: scene.sceneName as string });
+          const cameraItem = sceneItems.sceneItems.find((item: any) => 
+            item.sourceName === sourceName
+          );
+          
+          if (cameraItem) {
+            cameraItems.push({
+              sceneName: scene.sceneName as string,
+              sceneItemId: cameraItem.sceneItemId as number,
+              enabled: cameraItem.sceneItemEnabled as boolean
+            });
+            console.log(`Found "${sourceName}" in scene "${scene.sceneName}" (enabled: ${cameraItem.sceneItemEnabled})`);
+          }
+        } catch (error) {
+          console.log(`Error checking scene "${scene.sceneName}":`, error);
+        }
+      }
+      
+      if (cameraItems.length === 0) {
+        throw new Error(`Camera source "${sourceName}" not found in any scene`);
+      }
+      
+      // Determine the new state based on the first found item
+      const firstItem = cameraItems[0];
+      const newEnabled = !firstItem.enabled;
+      
+      console.log(`Toggling "${sourceName}" from ${firstItem.enabled ? "enabled" : "disabled"} to ${newEnabled ? "enabled" : "disabled"} in ${cameraItems.length} scenes`);
+      
+      // Toggle the camera source in all scenes where it exists
+      const results = [];
+      for (const item of cameraItems) {
+        try {
+          const result = await this.obs.call("SetSceneItemEnabled", {
+            sceneName: item.sceneName,
+            sceneItemId: item.sceneItemId,
+            sceneItemEnabled: newEnabled
+          });
+          results.push({ sceneName: item.sceneName, success: true });
+          console.log(`✅ Toggled "${sourceName}" in scene "${item.sceneName}"`);
+        } catch (error) {
+          results.push({ sceneName: item.sceneName, success: false, error });
+          console.error(`❌ Failed to toggle "${sourceName}" in scene "${item.sceneName}":`, error);
+        }
+      }
+      
+      const successCount = results.filter(r => r.success).length;
+      console.log(`Successfully toggled "${sourceName}" in ${successCount}/${cameraItems.length} scenes`);
+      
+      return newEnabled;
+    } catch (error) {
+      console.error(`Failed to toggle camera ${sourceName}:`, error);
+      throw error;
+    }
+  }
+
+  async getCameraStatus(sourceName: string): Promise<boolean> {
+    if (!this.isConnected) {
+      throw new Error("Not connected to OBS");
+    }
+
+    try {
+      // Get the current scene to find the camera source
+      const currentScene = await this.obs.call("GetCurrentProgramScene");
+      const sceneName = currentScene.currentProgramSceneName;
+      
+      // Get scene items to find the camera source
+      const sceneItems = await this.obs.call("GetSceneItemList", { sceneName });
+      const cameraItem = sceneItems.sceneItems.find((item: any) => 
+        item.sourceName === sourceName
+      );
+      
+      if (!cameraItem) {
+        // If not found in current scene, check if it exists in any scene
+        const scenes = await this.obs.call("GetSceneList");
+        for (const scene of scenes.scenes) {
+          const sceneItems = await this.obs.call("GetSceneItemList", { sceneName: scene.sceneName as string });
+          const cameraItem = sceneItems.sceneItems.find((item: any) => 
+            item.sourceName === sourceName
+          );
+          if (cameraItem) {
+            return cameraItem.sceneItemEnabled as boolean;
+          }
+        }
+        throw new Error(`Camera source "${sourceName}" not found in any scene`);
+      }
+      
+      return cameraItem.sceneItemEnabled as boolean;
+    } catch (error) {
+      console.error(`Failed to get camera status for ${sourceName}:`, error);
+      throw error;
+    }
+  }
+
+  // Recording controls
+  async toggleRecording(): Promise<boolean> {
+    if (!this.isConnected) {
+      throw new Error("Not connected to OBS");
+    }
+
+    try {
+      const response = await this.obs.call("ToggleRecord");
+      console.log("Toggled recording:", response.outputActive);
+      return response.outputActive;
+    } catch (error) {
+      console.error("Failed to toggle recording:", error);
+      throw error;
+    }
+  }
+
+  async startRecording(): Promise<void> {
+    if (!this.isConnected) {
+      throw new Error("Not connected to OBS");
+    }
+
+    try {
+      await this.obs.call("StartRecord");
+      console.log("Started recording");
+    } catch (error) {
+      console.error("Failed to start recording:", error);
+      throw error;
+    }
+  }
+
+  async stopRecording(): Promise<void> {
+    if (!this.isConnected) {
+      throw new Error("Not connected to OBS");
+    }
+
+    try {
+      await this.obs.call("StopRecord");
+      console.log("Stopped recording");
+    } catch (error) {
+      console.error("Failed to stop recording:", error);
+      throw error;
+    }
+  }
+
+  // Streaming controls
+  async toggleStreaming(): Promise<boolean> {
+    if (!this.isConnected) {
+      throw new Error("Not connected to OBS");
+    }
+
+    try {
+      const response = await this.obs.call("ToggleStream");
+      console.log("Toggled streaming:", response.outputActive);
+      return response.outputActive;
+    } catch (error) {
+      console.error("Failed to toggle streaming:", error);
+      throw error;
+    }
+  }
+
+  async startStreaming(): Promise<void> {
+    if (!this.isConnected) {
+      throw new Error("Not connected to OBS");
+    }
+
+    try {
+      await this.obs.call("StartStream");
+      console.log("Started streaming");
+    } catch (error) {
+      console.error("Failed to start streaming:", error);
+      throw error;
+    }
+  }
+
+  async stopStreaming(): Promise<void> {
+    if (!this.isConnected) {
+      throw new Error("Not connected to OBS");
+    }
+
+    try {
+      await this.obs.call("StopStream");
+      console.log("Stopped streaming");
+    } catch (error) {
+      console.error("Failed to stop streaming:", error);
+      throw error;
+    }
+  }
+
+  // Get current status
+  async getRecordingStatus(): Promise<boolean> {
+    if (!this.isConnected) {
+      throw new Error("Not connected to OBS");
+    }
+
+    try {
+      const response = await this.obs.call("GetRecordStatus");
+      return response.outputActive;
+    } catch (error) {
+      console.error("Failed to get recording status:", error);
+      throw error;
+    }
+  }
+
+  async getStreamingStatus(): Promise<boolean> {
+    if (!this.isConnected) {
+      throw new Error("Not connected to OBS");
+    }
+
+    try {
+      const response = await this.obs.call("GetStreamStatus");
+      return response.outputActive;
+    } catch (error) {
+      console.error("Failed to get streaming status:", error);
+      throw error;
+    }
+  }
+
+  // Get available sources
+  async getAudioSources(): Promise<string[]> {
+    if (!this.isConnected) {
+      throw new Error("Not connected to OBS");
+    }
+
+    try {
+      const response = await this.obs.call("GetInputList");
+      const audioSources = response.inputs
+        .filter((input: any) => input.inputKind && input.inputKind.includes("audio"))
+        .map((input: any) => input.inputName);
+      
+      console.log("Available audio sources:", audioSources);
+      return audioSources;
+    } catch (error) {
+      console.error("Failed to get audio sources:", error);
+      throw error;
+    }
+  }
+
+  async getVideoSources(): Promise<string[]> {
+    if (!this.isConnected) {
+      throw new Error("Not connected to OBS");
+    }
+
+    try {
+      const response = await this.obs.call("GetInputList");
+      const videoSources = response.inputs
+        .filter((input: any) => input.inputKind && (
+          input.inputKind.includes("camera") || 
+          input.inputKind.includes("video") ||
+          input.inputKind.includes("capture")
+        ))
+        .map((input: any) => input.inputName);
+      
+      console.log("Available video sources:", videoSources);
+      return videoSources;
+    } catch (error) {
+      console.error("Failed to get video sources:", error);
+      throw error;
+    }
+  }
+
   getConnectionStatus(): ConnectionStatus {
     return {
       connected: this.isConnected,

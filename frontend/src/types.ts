@@ -25,3 +25,10 @@ export interface SceneData {
   scenes: OBSScene[];
   currentScene: string | null;
 }
+
+export interface ControlStatus {
+  recording: boolean;
+  streaming: boolean;
+  micMuted: boolean;
+  cameraMuted: boolean;
+}
