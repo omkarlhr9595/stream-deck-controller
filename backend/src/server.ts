@@ -1,7 +1,11 @@
 import express from "express";
 import cors from "cors";
+import dotenv from "dotenv";
 import { OBSClient } from "./obs-client";
 import { OBSConnectionConfig, ApiResponse, OBSScene } from "./types";
+
+// Load environment variables
+dotenv.config();
 
 const app = express();
 const port = parseInt(process.env.PORT || "3001", 10);
@@ -12,6 +16,30 @@ app.use(express.json());
 
 // OBS Client instance
 const obsClient = new OBSClient();
+
+// Auto-connect to OBS on startup
+async function autoConnect() {
+  const config: OBSConnectionConfig = {
+    address: process.env.OBS_ADDRESS || "localhost",
+    port: parseInt(process.env.OBS_PORT || "4455", 10),
+    password: process.env.OBS_PASSWORD || undefined,
+  };
+
+  console.log("🔄 Attempting auto-connection to OBS...");
+  try {
+    const result = await obsClient.connect(config);
+    if (result.connected) {
+      console.log("✅ Auto-connected to OBS successfully!");
+    } else {
+      console.log("❌ Auto-connection failed:", result.error);
+    }
+  } catch (error) {
+    console.log("❌ Auto-connection error:", error);
+  }
+}
+
+// Start auto-connection after a short delay
+setTimeout(autoConnect, 2000);
 
 // Routes
 app.get("/api/health", (req, res) => {
@@ -25,49 +53,7 @@ app.get("/api/status", (req, res) => {
   res.json({ success: true, data: status });
 });
 
-app.post("/api/connect", async (req, res) => {
-  console.log("🌐 POST /api/connect called with body:", req.body);
-  try {
-    const config: OBSConnectionConfig = req.body;
-
-    if (!config.address || !config.port) {
-      console.log("❌ Missing address or port");
-      return res.status(400).json({
-        success: false,
-        error: "Address and port are required",
-      });
-    }
-
-    console.log("📡 Calling obsClient.connect()...");
-    const result = await obsClient.connect(config);
-
-    if (result.connected) {
-      console.log("✅ Connection successful, returning success response");
-      res.json({ success: true, data: result });
-    } else {
-      console.log("❌ Connection failed, returning error response");
-      res.status(400).json({ success: false, error: result.error });
-    }
-  } catch (error) {
-    console.log("💥 Exception in /api/connect:", error);
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
-  }
-});
-
-app.post("/api/disconnect", async (req, res) => {
-  try {
-    await obsClient.disconnect();
-    res.json({ success: true, data: { connected: false } });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
-  }
-});
+// Connection management - removed since we auto-connect
 
 app.get("/api/scenes", async (req, res) => {
   try {

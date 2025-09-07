@@ -1,242 +1,124 @@
-import { OBSScene, OBSConnectionConfig, ConnectionStatus } from "./types";
+import { OBSClient } from "./obs-client";
+import { OBSScene } from "./types";
 
 export class UI {
   private app: HTMLElement;
-  private obsClient: any; // Will be injected
-  private audioSources: string[] = [];
-  private videoSources: string[] = [];
+  private obsClient!: OBSClient;
   private selectedAudioSource: string | null = null;
   private selectedVideoSource: string | null = null;
 
   constructor(app: HTMLElement) {
     this.app = app;
-    this.loadSavedConnection();
   }
 
-  setOBSClient(client: any) {
+  setOBSClient(client: OBSClient) {
     this.obsClient = client;
-  }
-
-  private loadSavedConnection(): void {
-    try {
-      const saved = localStorage.getItem('obs-connection');
-      if (saved) {
-        const connectionData = JSON.parse(saved);
-        
-        // Check if saved data is not too old (24 hours)
-        const maxAge = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
-        if (Date.now() - connectionData.timestamp < maxAge) {
-          // Populate form fields
-          const addressInput = document.getElementById("obs-address") as HTMLInputElement;
-          const portInput = document.getElementById("obs-port") as HTMLInputElement;
-          const passwordInput = document.getElementById("obs-password") as HTMLInputElement;
-          
-          if (addressInput) addressInput.value = connectionData.address || '';
-          if (portInput) portInput.value = connectionData.port?.toString() || '4455';
-          if (passwordInput) passwordInput.value = connectionData.password || '';
-          
-          console.log("Loaded saved connection details");
-          
-          // Auto-connect if we have valid saved data
-          if (connectionData.address) {
-            console.log("Attempting auto-connect with saved credentials...");
-            setTimeout(() => this.autoConnect(connectionData), 1000);
-          }
-        } else {
-          // Remove expired data
-          localStorage.removeItem('obs-connection');
-        }
-      }
-    } catch (error) {
-      console.error("Failed to load saved connection:", error);
-      // Remove corrupted data
-      localStorage.removeItem('obs-connection');
-    }
-  }
-
-  private async autoConnect(connectionData: any): Promise<void> {
-    try {
-      this.showLoading(true);
-      const config: OBSConnectionConfig = { 
-        address: connectionData.address, 
-        port: connectionData.port, 
-        password: connectionData.password 
-      };
-      
-      const status = await this.obsClient.connect(config);
-
-      if (status.connected) {
-        this.updateConnectionStatus(status);
-        this.showScenesPanel();
-        await this.loadScenes();
-        console.log("Auto-connect successful!");
-      } else {
-        console.log("Auto-connect failed:", status.error);
-        // Don't show error for auto-connect failures, just log them
-      }
-    } catch (error) {
-      console.log("Auto-connect error:", error);
-      // Don't show error for auto-connect failures, just log them
-    } finally {
-      this.showLoading(false);
-    }
   }
 
   render(): void {
     this.app.innerHTML = `
-      <div class="min-h-screen bg-gray-900">
-        <!-- Header -->
-        <header class="bg-gray-800 border-b border-gray-700 px-4 py-3">
-          <div class="flex items-center justify-between">
-            <h1 class="text-xl font-bold text-white">OBS Controller</h1>
-            <div id="connection-status" class="flex items-center space-x-2">
-              <div class="w-3 h-3 rounded-full bg-red-500"></div>
-              <span class="text-sm text-gray-300">Disconnected</span>
-            </div>
-          </div>
-        </header>
-
-        <!-- Connection Panel -->
-        <div id="connection-panel" class="p-4 border-b border-gray-700">
-          <div class="max-w-md mx-auto">
-            <h2 class="text-lg font-semibold mb-4 text-white">Connect to OBS</h2>
-            <form id="connection-form" class="space-y-4">
-              <div>
-                <label class="block text-sm font-medium text-gray-300 mb-1">OBS IP Address</label>
-                <input 
-                  type="text" 
-                  id="obs-address" 
-                  placeholder="192.168.1.100" 
-                  class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  value="localhost"
-                >
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-300 mb-1">Port</label>
-                <input 
-                  type="number" 
-                  id="obs-port" 
-                  placeholder="4455" 
-                  class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  value="4455"
-                >
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-300 mb-1">Password (optional)</label>
-                <input 
-                  type="password" 
-                  id="obs-password" 
-                  placeholder="Enter password" 
-                  class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                >
-              </div>
-              <div class="space-y-2">
-                <button 
-                  type="submit" 
-                  id="connect-btn"
-                  class="w-full bg-primary-600 hover:bg-primary-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200"
-                >
-                  Connect
-                </button>
-                <button 
-                  type="button" 
-                  id="clear-saved-btn"
-                  class="w-full bg-gray-600 hover:bg-gray-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 text-sm"
-                >
-                  Clear Saved Connection
-                </button>
-              </div>
-            </form>
-          </div>
+      <div class="min-h-screen bg-black">
+        <!-- Loading State -->
+        <div id="loading" class="text-center py-8 hidden">
+          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+          <p class="text-gray-300 mt-2">Loading...</p>
         </div>
 
-        <!-- Scenes Panel -->
-        <div id="scenes-panel" class="p-4 hidden">
-          <div class="max-w-4xl mx-auto">
-            <div class="flex items-center justify-between mb-4">
-              <h2 class="text-lg font-semibold text-white">OBS Controls</h2>
-              <div class="flex items-center space-x-3">
-                <button 
-                  id="refresh-btn"
-                  class="text-sm text-gray-400 hover:text-white transition-colors"
-                >
-                  Refresh
-                </button>
-                <button 
-                  id="disconnect-btn"
-                  class="text-sm text-gray-400 hover:text-white transition-colors"
-                >
-                  Disconnect
-                </button>
-              </div>
+        <!-- Error Message -->
+        <div id="error-message" class="hidden bg-red-600 text-white p-4 m-4 rounded-lg">
+          <p id="error-text"></p>
+        </div>
+
+        <!-- Stream Deck Interface -->
+        <div id="streamdeck-interface" class="min-h-screen">
+          <!-- Page 1: Controls -->
+          <div id="controls-page" class="min-h-screen flex flex-col items-center justify-center p-4">
+            <div class="text-center mb-8">
+              <h1 class="text-3xl font-bold text-white mb-2">Quick Controls</h1>
+              <div class="text-sm text-gray-400">Page 1 of 2</div>
             </div>
+            
+            <!-- Controls Grid 2x2 -->
+            <div class="grid grid-cols-2 gap-6 w-full max-w-lg">
+              <!-- Recording -->
+              <button 
+                id="recording-btn"
+                class="streamdeck-btn bg-red-600 hover:bg-red-700 active:bg-red-800 border-2 border-red-500 rounded-xl transition-all duration-150 text-center min-h-[140px] flex flex-col justify-center"
+              >
+                <div class="text-5xl mb-3">⏺️</div>
+                <div class="text-white font-bold text-xl">REC</div>
+                <div id="recording-status" class="text-lg text-red-200">OFF</div>
+              </button>
 
+              <!-- Streaming -->
+              <button 
+                id="streaming-btn"
+                class="streamdeck-btn bg-purple-600 hover:bg-purple-700 active:bg-purple-800 border-2 border-purple-500 rounded-xl transition-all duration-150 text-center min-h-[140px] flex flex-col justify-center"
+              >
+                <div class="text-5xl mb-3">📡</div>
+                <div class="text-white font-bold text-xl">LIVE</div>
+                <div id="streaming-status" class="text-lg text-purple-200">OFF</div>
+              </button>
 
-            <!-- Quick Controls -->
-            <div class="mb-6">
-              <h3 class="text-md font-medium text-white mb-3">Quick Controls</h3>
-              <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <!-- Recording -->
-                <button 
-                  id="recording-btn"
-                  class="p-3 bg-red-600 hover:bg-red-700 border-2 border-red-500 rounded-lg transition-all duration-200 text-center"
-                >
-                  <div class="text-sm font-medium text-white">🔴 Recording</div>
-                  <div id="recording-status" class="text-xs text-red-200 mt-1">Stopped</div>
-                </button>
+              <!-- Microphone -->
+              <button 
+                id="mic-btn"
+                class="streamdeck-btn bg-blue-600 hover:bg-blue-700 active:bg-blue-800 border-2 border-blue-500 rounded-xl transition-all duration-150 text-center min-h-[140px] flex flex-col justify-center"
+              >
+                <div class="text-5xl mb-3">🎤</div>
+                <div class="text-white font-bold text-xl">MIC</div>
+                <div id="mic-status" class="text-lg text-blue-200">ON</div>
+              </button>
 
-                <!-- Streaming -->
-                <button 
-                  id="streaming-btn"
-                  class="p-3 bg-purple-600 hover:bg-purple-700 border-2 border-purple-500 rounded-lg transition-all duration-200 text-center"
-                >
-                  <div class="text-sm font-medium text-white">📺 Streaming</div>
-                  <div id="streaming-status" class="text-xs text-purple-200 mt-1">Offline</div>
-                </button>
-
-                <!-- Microphone -->
-                <button 
-                  id="mic-btn"
-                  class="p-3 bg-blue-600 hover:bg-blue-700 border-2 border-blue-500 rounded-lg transition-all duration-200 text-center"
-                >
-                  <div class="text-sm font-medium text-white">🎤 Microphone</div>
-                  <div id="mic-status" class="text-xs text-blue-200 mt-1">Unmuted</div>
-                  <div id="mic-source" class="text-xs text-blue-300 mt-1 truncate">Loading...</div>
-                </button>
-
-                <!-- Camera -->
-                <button 
-                  id="camera-btn"
-                  class="p-3 bg-green-600 hover:bg-green-700 border-2 border-green-500 rounded-lg transition-all duration-200 text-center"
-                >
-                  <div class="text-sm font-medium text-white">📹 Camera</div>
-                  <div id="camera-status" class="text-xs text-green-200 mt-1">On</div>
-                  <div id="camera-source" class="text-xs text-green-300 mt-1 truncate">Loading...</div>
-                </button>
-              </div>
+              <!-- Camera -->
+              <button 
+                id="camera-btn"
+                class="streamdeck-btn bg-green-600 hover:bg-green-700 active:bg-green-800 border-2 border-green-500 rounded-xl transition-all duration-150 text-center min-h-[140px] flex flex-col justify-center"
+              >
+                <div class="text-5xl mb-3">📹</div>
+                <div class="text-white font-bold text-xl">CAM</div>
+                <div id="camera-status" class="text-lg text-green-200">ON</div>
+              </button>
             </div>
+          </div>
 
-            <!-- Scenes -->
-            <div class="mb-4">
-              <h3 class="text-md font-medium text-white mb-3">Scenes</h3>
-              <div id="scenes-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+          <!-- Page 2: Scenes -->
+          <div id="scenes-page" class="min-h-screen hidden">
+            <div class="p-4">
+              <div class="text-center mb-6">
+                <h1 class="text-3xl font-bold text-white mb-4">Scenes</h1>
+                <div class="flex items-center justify-center space-x-4">
+                  <button
+                    id="refresh-btn"
+                    class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-all duration-150"
+                  >
+                    🔄 Refresh
+                  </button>
+                  <div class="text-sm text-gray-400">Page 2 of 2</div>
+                </div>
+              </div>
+              
+              <!-- Scenes Grid 4x4 -->
+              <div id="scenes-list" class="grid grid-cols-4 gap-3">
                 <!-- Scenes will be populated here -->
               </div>
             </div>
           </div>
-        </div>
 
-        <!-- Loading Spinner -->
-        <div id="loading" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50">
-          <div class="bg-gray-800 rounded-lg p-6 flex items-center space-x-3">
-            <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-500"></div>
-            <span class="text-white">Loading...</span>
+          <!-- Navigation -->
+          <div class="fixed top-4 left-4 right-4 flex justify-between z-50">
+            <button id="prev-page-btn" class="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-all duration-200">
+              ‹ Controls
+            </button>
+            <button id="next-page-btn" class="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-all duration-200">
+              Scenes ›
+            </button>
           </div>
-        </div>
 
-        <!-- Error Toast -->
-        <div id="error-toast" class="hidden fixed top-4 right-4 bg-red-600 text-white px-4 py-2 rounded-lg shadow-lg z-50">
-          <span id="error-message"></span>
+          <!-- Fullscreen Button -->
+          <button id="fullscreen-btn" class="fixed bottom-4 right-4 bg-gray-800 hover:bg-gray-700 text-white p-3 rounded-full transition-all duration-200 z-50">
+            <div class="text-xl">⛶</div>
+          </button>
         </div>
       </div>
     `;
@@ -245,15 +127,7 @@ export class UI {
   }
 
   private setupEventListeners(): void {
-    const connectionForm = document.getElementById(
-      "connection-form"
-    ) as HTMLFormElement;
-    const connectBtn = document.getElementById(
-      "connect-btn"
-    ) as HTMLButtonElement;
-    const disconnectBtn = document.getElementById(
-      "disconnect-btn"
-    ) as HTMLButtonElement;
+    // Refresh button
     const refreshBtn = document.getElementById(
       "refresh-btn"
     ) as HTMLButtonElement;
@@ -263,115 +137,47 @@ export class UI {
     const streamingBtn = document.getElementById("streaming-btn") as HTMLButtonElement;
     const micBtn = document.getElementById("mic-btn") as HTMLButtonElement;
     const cameraBtn = document.getElementById("camera-btn") as HTMLButtonElement;
-    const clearSavedBtn = document.getElementById("clear-saved-btn") as HTMLButtonElement;
-    
-
-    connectionForm?.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      await this.handleConnect();
-    });
-
-    disconnectBtn?.addEventListener("click", async () => {
-      await this.handleDisconnect();
-    });
 
     refreshBtn?.addEventListener("click", async () => {
       await this.handleRefresh();
     });
 
-    // Control button event listeners
     recordingBtn?.addEventListener("click", async () => {
+      this.addButtonPressEffect(recordingBtn);
       await this.handleRecordingToggle();
     });
 
     streamingBtn?.addEventListener("click", async () => {
+      this.addButtonPressEffect(streamingBtn);
       await this.handleStreamingToggle();
     });
 
     micBtn?.addEventListener("click", async () => {
+      this.addButtonPressEffect(micBtn);
       await this.handleMicToggle();
     });
 
     cameraBtn?.addEventListener("click", async () => {
+      this.addButtonPressEffect(cameraBtn);
       await this.handleCameraToggle();
     });
 
-    clearSavedBtn?.addEventListener("click", () => {
-      localStorage.removeItem('obs-connection');
-      // Clear form fields
-      const addressInput = document.getElementById("obs-address") as HTMLInputElement;
-      const portInput = document.getElementById("obs-port") as HTMLInputElement;
-      const passwordInput = document.getElementById("obs-password") as HTMLInputElement;
-      
-      if (addressInput) addressInput.value = '';
-      if (portInput) portInput.value = '4455';
-      if (passwordInput) passwordInput.value = '';
-      
-      console.log("Cleared saved connection details");
+    // Navigation buttons
+    const prevPageBtn = document.getElementById("prev-page-btn");
+    const nextPageBtn = document.getElementById("next-page-btn");
+    const fullscreenBtn = document.getElementById("fullscreen-btn");
+
+    prevPageBtn?.addEventListener("click", () => {
+      this.showControlsPage();
     });
 
-  }
+    nextPageBtn?.addEventListener("click", () => {
+      this.showScenesPage();
+    });
 
-  private async handleConnect(): Promise<void> {
-    const address = (document.getElementById("obs-address") as HTMLInputElement)
-      ?.value;
-    const port = parseInt(
-      (document.getElementById("obs-port") as HTMLInputElement)?.value || "4455"
-    );
-    const password = (
-      document.getElementById("obs-password") as HTMLInputElement
-    )?.value;
-
-    if (!address) {
-      this.showError("Please enter OBS IP address");
-      return;
-    }
-
-    // Save connection details to localStorage
-    const connectionData = {
-      address,
-      port,
-      password: password || undefined,
-      timestamp: Date.now()
-    };
-    localStorage.setItem('obs-connection', JSON.stringify(connectionData));
-
-    this.showLoading(true);
-    this.setConnectButtonLoading(true);
-
-    try {
-      const config: OBSConnectionConfig = { address, port, password };
-      const status = await this.obsClient.connect(config);
-
-      if (status.connected) {
-        this.updateConnectionStatus(status);
-        this.showScenesPanel();
-        await this.loadScenes();
-      } else {
-        this.showError(status.error || "Connection failed");
-      }
-    } catch (error) {
-      this.showError(
-        error instanceof Error ? error.message : "Connection failed"
-      );
-    } finally {
-      this.showLoading(false);
-      this.setConnectButtonLoading(false);
-    }
-  }
-
-  private async handleDisconnect(): Promise<void> {
-    try {
-      await this.obsClient.disconnect();
-      this.updateConnectionStatus({ connected: false });
-      this.showConnectionPanel();
-      
-      // Clear saved connection on manual disconnect
-      localStorage.removeItem('obs-connection');
-      console.log("Cleared saved connection details");
-    } catch (error) {
-      this.showError("Failed to disconnect");
-    }
+    fullscreenBtn?.addEventListener("click", () => {
+      this.toggleFullscreen();
+    });
   }
 
   private async handleRefresh(): Promise<void> {
@@ -385,170 +191,12 @@ export class UI {
     }
   }
 
-  public async loadScenes(): Promise<void> {
-    try {
-      const sceneData = await this.obsClient.getScenes();
-      this.renderScenes(sceneData.scenes, sceneData.currentScene);
-      
-      // Also load available sources
-      await this.loadSources();
-    } catch (error) {
-      this.showError("Failed to load scenes");
-    }
-  }
-
-  private async loadSources(): Promise<void> {
-    // Use fixed source names as specified by user
-    this.selectedAudioSource = "MIC";
-    this.selectedVideoSource = "Cam";
-    
-    // Update UI with source names
-    this.updateSourceNames();
-    
-    console.log("Using fixed source names - Audio: MIC, Video: Cam");
-  }
-
-  private updateSourceNames(): void {
-    const micSourceEl = document.getElementById("mic-source");
-    const cameraSourceEl = document.getElementById("camera-source");
-    
-    if (micSourceEl) {
-      micSourceEl.textContent = this.selectedAudioSource || "No audio source";
-    }
-    
-    if (cameraSourceEl) {
-      cameraSourceEl.textContent = this.selectedVideoSource || "No video source";
-    }
-  }
-
-
-  private async refreshScenes(): Promise<void> {
-    try {
-      const sceneData = await this.obsClient.refreshScenes();
-      this.renderScenes(sceneData.scenes, sceneData.currentScene);
-    } catch (error) {
-      this.showError("Failed to refresh scenes");
-    }
-  }
-
-  private renderScenes(scenes: OBSScene[], currentScene: string | null): void {
-    const scenesGrid = document.getElementById("scenes-grid");
-    if (!scenesGrid) return;
-
-    scenesGrid.innerHTML = scenes
-      .map(
-        (scene) => `
-      <button 
-        class="scene-btn p-4 bg-gray-800 hover:bg-gray-700 border-2 rounded-lg transition-all duration-200 text-left ${
-          scene.sceneName === currentScene
-            ? "border-primary-500 bg-primary-900"
-            : "border-gray-600 hover:border-gray-500"
-        }"
-        data-scene="${scene.sceneName}"
-      >
-        <div class="text-sm font-medium text-white truncate">${
-          scene.sceneName
-        }</div>
-        ${
-          scene.sceneName === currentScene
-            ? '<div class="text-xs text-primary-300 mt-1">Current</div>'
-            : ""
-        }
-      </button>
-    `
-      )
-      .join("");
-
-    // Add click listeners to scene buttons
-    scenesGrid.querySelectorAll(".scene-btn").forEach((btn) => {
-      btn.addEventListener("click", async (e) => {
-        const sceneName = (e.currentTarget as HTMLElement).dataset.scene;
-        if (sceneName) {
-          await this.switchScene(sceneName);
-        }
-      });
-    });
-  }
-
-  private async switchScene(sceneName: string): Promise<void> {
-    try {
-      await this.obsClient.switchScene(sceneName);
-      // Update UI to show current scene
-      await this.loadScenes();
-    } catch (error) {
-      this.showError("Failed to switch scene");
-    }
-  }
-
-  public updateConnectionStatus(status: ConnectionStatus): void {
-    const statusElement = document.getElementById("connection-status");
-    if (!statusElement) return;
-
-    const dot = statusElement.querySelector("div");
-    const text = statusElement.querySelector("span");
-
-    if (status.connected) {
-      dot?.classList.remove("bg-red-500");
-      dot?.classList.add("bg-green-500");
-      text!.textContent = "Connected";
-    } else {
-      dot?.classList.remove("bg-green-500");
-      dot?.classList.add("bg-red-500");
-      text!.textContent = "Disconnected";
-    }
-  }
-
-  private showConnectionPanel(): void {
-    document.getElementById("connection-panel")?.classList.remove("hidden");
-    document.getElementById("scenes-panel")?.classList.add("hidden");
-  }
-
-  public showScenesPanel(): void {
-    document.getElementById("connection-panel")?.classList.add("hidden");
-    document.getElementById("scenes-panel")?.classList.remove("hidden");
-  }
-
-  private showLoading(show: boolean): void {
-    const loading = document.getElementById("loading");
-    if (show) {
-      loading?.classList.remove("hidden");
-    } else {
-      loading?.classList.add("hidden");
-    }
-  }
-
-  private setConnectButtonLoading(loading: boolean): void {
-    const btn = document.getElementById("connect-btn") as HTMLButtonElement;
-    if (loading) {
-      btn.disabled = true;
-      btn.textContent = "Connecting...";
-    } else {
-      btn.disabled = false;
-      btn.textContent = "Connect";
-    }
-  }
-
-  private showError(message: string): void {
-    const toast = document.getElementById("error-toast");
-    const messageEl = document.getElementById("error-message");
-
-    if (toast && messageEl) {
-      messageEl.textContent = message;
-      toast.classList.remove("hidden");
-
-      setTimeout(() => {
-        toast.classList.add("hidden");
-      }, 5000);
-    }
-  }
-
-  // Control handlers
   private async handleRecordingToggle(): Promise<void> {
     try {
       const recording = await this.obsClient.toggleRecording();
       this.updateRecordingStatus(recording);
     } catch (error) {
-      this.showError("Failed to toggle recording");
+      this.showError(`Failed to toggle recording: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -557,7 +205,7 @@ export class UI {
       const streaming = await this.obsClient.toggleStreaming();
       this.updateStreamingStatus(streaming);
     } catch (error) {
-      this.showError("Failed to toggle streaming");
+      this.showError(`Failed to toggle streaming: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -595,7 +243,7 @@ export class UI {
     const btn = document.getElementById("recording-btn");
     
     if (statusEl) {
-      statusEl.textContent = recording ? "Recording" : "Stopped";
+      statusEl.textContent = recording ? "ON" : "OFF";
     }
     
     if (btn) {
@@ -614,7 +262,7 @@ export class UI {
     const btn = document.getElementById("streaming-btn");
     
     if (statusEl) {
-      statusEl.textContent = streaming ? "Live" : "Offline";
+      statusEl.textContent = streaming ? "ON" : "OFF";
     }
     
     if (btn) {
@@ -633,7 +281,7 @@ export class UI {
     const btn = document.getElementById("mic-btn");
     
     if (statusEl) {
-      statusEl.textContent = muted ? "Muted" : "Unmuted";
+      statusEl.textContent = muted ? "MUTE" : "ON";
     }
     
     if (btn) {
@@ -652,7 +300,7 @@ export class UI {
     const btn = document.getElementById("camera-btn");
     
     if (statusEl) {
-      statusEl.textContent = enabled ? "On" : "Off";
+      statusEl.textContent = enabled ? "ON" : "OFF";
     }
     
     if (btn) {
@@ -665,4 +313,202 @@ export class UI {
       }
     }
   }
+
+  public async loadScenes(): Promise<void> {
+    try {
+      const sceneData = await this.obsClient.getScenes();
+      const currentScene = await this.obsClient.getCurrentScene();
+      this.renderScenes(sceneData, currentScene);
+      await this.loadSources();
+    } catch (error) {
+      this.showError("Failed to load scenes");
+    }
+  }
+
+  private async loadSources(): Promise<void> {
+    // Use fixed source names as specified by user
+    this.selectedAudioSource = "MIC";
+    this.selectedVideoSource = "Cam";
+    
+    // Update UI with source names
+    this.updateSourceNames();
+    
+    console.log("Using fixed source names - Audio: MIC, Video: Cam");
+  }
+
+  private updateSourceNames(): void {
+    const micSourceEl = document.getElementById("mic-source");
+    const cameraSourceEl = document.getElementById("camera-source");
+    
+    if (micSourceEl) {
+      micSourceEl.textContent = this.selectedAudioSource || "No audio source";
+    }
+    
+    if (cameraSourceEl) {
+      cameraSourceEl.textContent = this.selectedVideoSource || "No video source";
+    }
+  }
+
+  private async refreshScenes(): Promise<void> {
+    try {
+      const sceneData = await this.obsClient.refreshScenes();
+      this.renderScenes(sceneData.scenes, sceneData.currentScene);
+    } catch (error) {
+      this.showError("Failed to refresh scenes");
+    }
+  }
+
+  private renderScenes(scenes: OBSScene[], currentScene: string | null): void {
+    const scenesList = document.getElementById("scenes-list");
+    if (!scenesList) return;
+
+    scenesList.innerHTML = scenes
+      .map((scene) => {
+        const isActive = scene.sceneName === currentScene;
+        const sceneIcon = this.getSceneIcon(scene.sceneName);
+        return `
+          <button
+            class="streamdeck-btn p-3 rounded-xl border-2 transition-all duration-150 text-center min-h-[100px] flex flex-col justify-center ${
+              isActive
+                ? "bg-blue-600 border-blue-500 text-white shadow-lg"
+                : "bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-gray-600 active:bg-gray-600"
+            }"
+            data-scene-name="${scene.sceneName}"
+          >
+            <div class="text-2xl mb-1">${sceneIcon}</div>
+            <div class="font-bold text-xs leading-tight mb-1">${scene.sceneName}</div>
+            ${isActive ? '<div class="text-xs text-blue-200">CURRENT</div>' : ""}
+          </button>
+        `;
+      })
+      .join("");
+
+    // Add click event listeners to scene buttons
+    scenesList.querySelectorAll(".streamdeck-btn").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        const target = e.currentTarget as HTMLButtonElement;
+        const sceneName = target.dataset.sceneName;
+        if (sceneName) {
+          await this.switchScene(sceneName);
+        }
+      });
+    });
+  }
+
+  private getSceneIcon(sceneName: string): string {
+    const name = sceneName.toLowerCase();
+    if (name.includes('talking') || name.includes('talking')) return '💬';
+    if (name.includes('overlay')) return '📋';
+    if (name.includes('brb')) return '⏸️';
+    if (name.includes('ending')) return '🏁';
+    if (name.includes('starting')) return '🚀';
+    if (name.includes('ps5') || name.includes('gaming')) return '🎮';
+    if (name.includes('pure')) return '✨';
+    if (name.includes('camera')) return '📹';
+    if (name.includes('desktop')) return '🖥️';
+    if (name.includes('browser')) return '🌐';
+    return '📺'; // Default scene icon
+  }
+
+
+  private addButtonPressEffect(button: HTMLButtonElement): void {
+    button.classList.add('pressed');
+    setTimeout(() => {
+      button.classList.remove('pressed');
+    }, 100);
+  }
+
+  private async switchScene(sceneName: string): Promise<void> {
+    try {
+      await this.obsClient.switchScene(sceneName);
+      // Update the UI to reflect the new current scene
+      const scenes = await this.obsClient.getScenes();
+      const currentScene = await this.obsClient.getCurrentScene();
+      this.renderScenes(scenes, currentScene);
+    } catch (error) {
+      this.showError(`Failed to switch scene: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  public updateConnectionStatus(status: any): void {
+    const statusEl = document.getElementById("connection-status");
+    if (!statusEl) return;
+
+    if (status.connected) {
+      statusEl.innerHTML = `
+        <div class="w-3 h-3 rounded-full bg-green-500"></div>
+        <span class="text-sm text-gray-300">Connected</span>
+      `;
+      this.showScenesPanel();
+    } else {
+      statusEl.innerHTML = `
+        <div class="w-3 h-3 rounded-full bg-red-500"></div>
+        <span class="text-sm text-gray-300">Disconnected</span>
+      `;
+    }
+  }
+
+  public showScenesPanel(): void {
+    const streamdeckInterface = document.getElementById("streamdeck-interface");
+    if (streamdeckInterface) {
+      streamdeckInterface.classList.remove("hidden");
+    }
+    this.showControlsPage();
+  }
+
+  private showControlsPage(): void {
+    const controlsPage = document.getElementById("controls-page");
+    const scenesPage = document.getElementById("scenes-page");
+    
+    if (controlsPage) controlsPage.classList.remove("hidden");
+    if (scenesPage) scenesPage.classList.add("hidden");
+  }
+
+  private showScenesPage(): void {
+    const controlsPage = document.getElementById("controls-page");
+    const scenesPage = document.getElementById("scenes-page");
+    
+    if (controlsPage) controlsPage.classList.add("hidden");
+    if (scenesPage) scenesPage.classList.remove("hidden");
+  }
+
+  private toggleFullscreen(): void {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(err => {
+        console.error('Error attempting to enable fullscreen:', err);
+      });
+    } else {
+      document.exitFullscreen().catch(err => {
+        console.error('Error attempting to exit fullscreen:', err);
+      });
+    }
+  }
+
+  private showLoading(show: boolean): void {
+    const loadingEl = document.getElementById("loading");
+    if (loadingEl) {
+      if (show) {
+        loadingEl.classList.remove("hidden");
+      } else {
+        loadingEl.classList.add("hidden");
+      }
+    }
+  }
+
+  private showError(message: string): void {
+    const errorEl = document.getElementById("error-message");
+    const errorTextEl = document.getElementById("error-text");
+    
+    if (errorEl && errorTextEl) {
+      errorTextEl.textContent = message;
+      errorEl.classList.remove("hidden");
+      
+      // Auto-hide error after 5 seconds
+      setTimeout(() => {
+        errorEl.classList.add("hidden");
+      }, 5000);
+    }
+  }
 }
+
+

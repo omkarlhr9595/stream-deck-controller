@@ -1,66 +1,61 @@
 import {
-  OBSConnectionConfig,
   ConnectionStatus,
   SceneData,
   ApiResponse,
+  OBSScene,
 } from "./types";
 
 // Get the current hostname and use port 3001 for backend
 const API_BASE_URL = `http://${window.location.hostname}:3001/api`;
 
 export class OBSClient {
-  private isConnected = false;
-
-  async connect(config: OBSConnectionConfig): Promise<ConnectionStatus> {
+  async getConnectionStatus(): Promise<ConnectionStatus> {
     try {
-      const response = await fetch(`${API_BASE_URL}/connect`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(config),
-      });
-
+      const response = await fetch(`${API_BASE_URL}/status`);
       const result: ApiResponse<ConnectionStatus> = await response.json();
-
+      
       if (result.success && result.data) {
-        this.isConnected = result.data.connected;
         return result.data;
       } else {
-        throw new Error(result.error || "Connection failed");
+        throw new Error(result.error || "Failed to get status");
       }
     } catch (error) {
-      console.error("Connection error:", error);
+      console.error("Status error:", error);
       return {
         connected: false,
-        error: error instanceof Error ? error.message : "Connection failed",
+        error: error instanceof Error ? error.message : "Failed to get status",
       };
     }
   }
 
-  async disconnect(): Promise<void> {
-    try {
-      await fetch(`${API_BASE_URL}/disconnect`, {
-        method: "POST",
-      });
-      this.isConnected = false;
-    } catch (error) {
-      console.error("Disconnect error:", error);
-    }
-  }
-
-  async getScenes(): Promise<SceneData> {
+  async getScenes(): Promise<OBSScene[]> {
     try {
       const response = await fetch(`${API_BASE_URL}/scenes`);
       const result: ApiResponse<SceneData> = await response.json();
-
+      
       if (result.success && result.data) {
-        return result.data;
+        return result.data.scenes;
       } else {
-        throw new Error(result.error || "Failed to fetch scenes");
+        throw new Error(result.error || "Failed to get scenes");
       }
     } catch (error) {
       console.error("Get scenes error:", error);
+      throw error;
+    }
+  }
+
+  async getCurrentScene(): Promise<string | null> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/scenes`);
+      const result: ApiResponse<SceneData> = await response.json();
+      
+      if (result.success && result.data) {
+        return result.data.currentScene;
+      } else {
+        throw new Error(result.error || "Failed to get current scene");
+      }
+    } catch (error) {
+      console.error("Get current scene error:", error);
       throw error;
     }
   }
@@ -71,7 +66,7 @@ export class OBSClient {
         method: "POST",
       });
       const result: ApiResponse<SceneData> = await response.json();
-
+      
       if (result.success && result.data) {
         return result.data;
       } else {
@@ -93,8 +88,7 @@ export class OBSClient {
         body: JSON.stringify({ sceneName }),
       });
 
-      const result: ApiResponse = await response.json();
-
+      const result: ApiResponse<void> = await response.json();
       if (!result.success) {
         throw new Error(result.error || "Failed to switch scene");
       }
@@ -102,30 +96,6 @@ export class OBSClient {
       console.error("Switch scene error:", error);
       throw error;
     }
-  }
-
-  async getStatus(): Promise<ConnectionStatus> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/status`);
-      const result: ApiResponse<ConnectionStatus> = await response.json();
-
-      if (result.success && result.data) {
-        this.isConnected = result.data.connected;
-        return result.data;
-      } else {
-        throw new Error(result.error || "Failed to get status");
-      }
-    } catch (error) {
-      console.error("Get status error:", error);
-      return {
-        connected: false,
-        error: error instanceof Error ? error.message : "Status check failed",
-      };
-    }
-  }
-
-  getConnectionStatus(): boolean {
-    return this.isConnected;
   }
 
   // Microphone controls
@@ -147,26 +117,6 @@ export class OBSClient {
       }
     } catch (error) {
       console.error("Toggle mute error:", error);
-      throw error;
-    }
-  }
-
-  async setMute(sourceName: string, muted: boolean): Promise<void> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/mic/set`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ sourceName, muted }),
-      });
-
-      const result: ApiResponse = await response.json();
-      if (!result.success) {
-        throw new Error(result.error || "Failed to set mute");
-      }
-    } catch (error) {
-      console.error("Set mute error:", error);
       throw error;
     }
   }
@@ -229,38 +179,6 @@ export class OBSClient {
     }
   }
 
-  async startRecording(): Promise<void> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/recording/start`, {
-        method: "POST",
-      });
-
-      const result: ApiResponse = await response.json();
-      if (!result.success) {
-        throw new Error(result.error || "Failed to start recording");
-      }
-    } catch (error) {
-      console.error("Start recording error:", error);
-      throw error;
-    }
-  }
-
-  async stopRecording(): Promise<void> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/recording/stop`, {
-        method: "POST",
-      });
-
-      const result: ApiResponse = await response.json();
-      if (!result.success) {
-        throw new Error(result.error || "Failed to stop recording");
-      }
-    } catch (error) {
-      console.error("Stop recording error:", error);
-      throw error;
-    }
-  }
-
   // Streaming controls
   async toggleStreaming(): Promise<boolean> {
     try {
@@ -276,100 +194,6 @@ export class OBSClient {
       }
     } catch (error) {
       console.error("Toggle streaming error:", error);
-      throw error;
-    }
-  }
-
-  async startStreaming(): Promise<void> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/streaming/start`, {
-        method: "POST",
-      });
-
-      const result: ApiResponse = await response.json();
-      if (!result.success) {
-        throw new Error(result.error || "Failed to start streaming");
-      }
-    } catch (error) {
-      console.error("Start streaming error:", error);
-      throw error;
-    }
-  }
-
-  async stopStreaming(): Promise<void> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/streaming/stop`, {
-        method: "POST",
-      });
-
-      const result: ApiResponse = await response.json();
-      if (!result.success) {
-        throw new Error(result.error || "Failed to stop streaming");
-      }
-    } catch (error) {
-      console.error("Stop streaming error:", error);
-      throw error;
-    }
-  }
-
-  // Status checks
-  async getRecordingStatus(): Promise<boolean> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/status/recording`);
-      const result: ApiResponse<{ recording: boolean }> = await response.json();
-      if (result.success && result.data) {
-        return result.data.recording;
-      } else {
-        throw new Error(result.error || "Failed to get recording status");
-      }
-    } catch (error) {
-      console.error("Get recording status error:", error);
-      throw error;
-    }
-  }
-
-  async getStreamingStatus(): Promise<boolean> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/status/streaming`);
-      const result: ApiResponse<{ streaming: boolean }> = await response.json();
-      if (result.success && result.data) {
-        return result.data.streaming;
-      } else {
-        throw new Error(result.error || "Failed to get streaming status");
-      }
-    } catch (error) {
-      console.error("Get streaming status error:", error);
-      throw error;
-    }
-  }
-
-  // Get available sources
-  async getAudioSources(): Promise<string[]> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/sources/audio`);
-      const result: ApiResponse<{ sources: string[] }> = await response.json();
-      if (result.success && result.data) {
-        return result.data.sources;
-      } else {
-        throw new Error(result.error || "Failed to get audio sources");
-      }
-    } catch (error) {
-      console.error("Get audio sources error:", error);
-      throw error;
-    }
-  }
-
-  async getVideoSources(): Promise<string[]> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/sources/video`);
-      const result: ApiResponse<{ sources: string[] }> = await response.json();
-      if (result.success && result.data) {
-        return result.data.sources;
-      } else {
-        throw new Error(result.error || "Failed to get video sources");
-      }
-    } catch (error) {
-      console.error("Get video sources error:", error);
       throw error;
     }
   }

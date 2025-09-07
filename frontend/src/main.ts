@@ -2,24 +2,36 @@ import "./style.css";
 import { OBSClient } from "./obs-client";
 import { UI } from "./ui";
 
-class App {
-  private obsClient: OBSClient;
-  private ui: UI;
-
-  constructor() {
-    this.obsClient = new OBSClient();
-    this.ui = new UI(document.getElementById("app")!);
-    this.ui.setOBSClient(this.obsClient);
+async function init() {
+  const app = document.getElementById("app");
+  if (!app) {
+    console.error("App element not found");
+    return;
   }
 
-  async init(): Promise<void> {
-    this.ui.render();
-    // Don't auto-connect on page load - let user connect manually
+  // Initialize OBS client and UI
+  const obsClient = new OBSClient();
+  const ui = new UI(app);
+  ui.setOBSClient(obsClient);
+
+  // Render the UI
+  ui.render();
+
+  // Show the interface immediately
+  ui.showScenesPanel();
+
+  // Check connection status and load data
+  try {
+    const status = await obsClient.getConnectionStatus();
+    ui.updateConnectionStatus(status);
+    
+    if (status.connected) {
+      await ui.loadScenes();
+    }
+  } catch (error) {
+    console.error("Failed to initialize:", error);
   }
 }
 
-// Initialize app when DOM is loaded
-document.addEventListener("DOMContentLoaded", () => {
-  const app = new App();
-  app.init();
-});
+// Initialize when DOM is loaded
+document.addEventListener("DOMContentLoaded", init);

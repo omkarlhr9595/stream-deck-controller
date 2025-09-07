@@ -15,13 +15,102 @@
 }
 
 @layer components {
-  .scene-btn {
-    @apply active:scale-95 transition-transform duration-150;
-    min-height: 80px;
+  /* Stream Deck Button Styles */
+  .streamdeck-btn {
+    @apply active:scale-95 transition-all duration-150;
+    min-height: 100px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    font-weight: 600;
   }
 
-  .scene-btn:active {
+  .streamdeck-btn:active {
     @apply transform scale-95;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  }
+
+  .streamdeck-btn:hover {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+  }
+
+  /* Mobile-optimized button styles */
+  button {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Ensure buttons are large enough for mobile */
+  .mobile-btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Better mobile scrolling */
+  .mobile-scroll {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  /* Stream Deck Grid Layout */
+  .streamdeck-grid {
+    display: grid;
+    gap: 8px;
+  }
+
+  /* Horizontal Scrolling Pages */
+  #pages-container {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE and Edge */
+  }
+
+  #pages-container::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
+  }
+
+  /* Page Navigation */
+  .page-nav-btn {
+    transition: all 0.2s ease-in-out;
+  }
+
+  .page-nav-btn.active {
+    transform: scale(1.05);
+  }
+
+  /* Button press animation */
+  @keyframes button-press {
+    0% { transform: scale(1); }
+    50% { transform: scale(0.95); }
+    100% { transform: scale(1); }
+  }
+
+  .streamdeck-btn.pressed {
+    animation: button-press 0.1s ease-in-out;
+  }
+
+  /* Fixed 4x4 Grid for Scenes */
+  #scenes-list {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  /* Navigation Arrow Styles */
+  #prev-page-btn, #next-page-btn {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  }
+
+  #prev-page-btn:hover, #next-page-btn:hover {
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+    transform: translateY(-50%) scale(1.1);
+  }
+
+  /* Fullscreen Button */
+  #fullscreen-btn {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  }
+
+  #fullscreen-btn:hover {
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+    transform: scale(1.1);
   }
 }
 
